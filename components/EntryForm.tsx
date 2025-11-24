@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, Save, ArrowRightLeft } from 'lucide-react';
+import { ChevronLeft, Save } from 'lucide-react';
 import { getTaskById, saveEntry, getEntryById, getEntries } from '../services/storage';
 import { ProgressEntry } from '../types';
 
@@ -9,21 +9,24 @@ const EntryForm: React.FC = () => {
   const navigate = useNavigate();
   const isEdit = Boolean(entryId);
   
-  // Format current date-time for datetime-local input (YYYY-MM-DDTHH:mm)
-  const getCurrentDateTime = () => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    return now.toISOString().slice(0, 16);
+  // Helper to get local ISO string (YYYY-MM-DDTHH:mm) for input value and max attribute
+  const getLocalISOString = (date: Date = new Date()) => {
+    const tzOffset = date.getTimezoneOffset() * 60000; // offset in milliseconds
+    const localISOTime = (new Date(date.getTime() - tzOffset)).toISOString().slice(0, 16);
+    return localISOTime;
   };
 
   const [mode, setMode] = useState<'add' | 'update'>('add');
   const [formData, setFormData] = useState({
-    value: '', // This represents unitsAdded OR totalCumulative based on mode
-    dateAndTime: getCurrentDateTime()
+    value: '', 
+    dateAndTime: getLocalISOString()
   });
   const [taskTitle, setTaskTitle] = useState('');
   const [currentCumulative, setCurrentCumulative] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Max date allowed is "now"
+  const maxDateStr = getLocalISOString();
 
   useEffect(() => {
     if (taskId) {
@@ -33,7 +36,6 @@ const EntryForm: React.FC = () => {
             
             // Calculate current cumulative from latest entry
             const entries = getEntries(taskId);
-            // Entries are sorted desc by default from storage
             const latestEntry = entries.length > 0 ? entries[0] : null;
             const current = latestEntry ? latestEntry.cumulativeUnits : task.startUnits;
             setCurrentCumulative(current);
@@ -45,11 +47,13 @@ const EntryForm: React.FC = () => {
     if (isEdit && entryId) {
         const entry = getEntryById(entryId);
         if (entry) {
+            // Convert stored UTC/ISO time back to local input format
+            const entryDate = new Date(entry.dateAndTime);
+            
             setFormData({
                 value: entry.unitsAdded.toString(),
-                dateAndTime: entry.dateAndTime
+                dateAndTime: getLocalISOString(entryDate)
             });
-            // In edit mode, we are editing a specific delta, so 'add' mode makes most sense conceptually
             setMode('add'); 
         }
     }
@@ -73,7 +77,6 @@ const EntryForm: React.FC = () => {
             return;
         }
     } else {
-        // Update mode: unitsAdded = newTotal - currentCumulative
         unitsAdded = inputVal - currentCumulative;
         if (unitsAdded === 0) {
             alert('The new total is the same as the current progress. No changes made.');
@@ -83,10 +86,34 @@ const EntryForm: React.FC = () => {
 
     if (!taskId) return;
 
+    // Validate Date (Prevent Future)
+    const selectedDate = new Date(formData.dateAndTime);
+    const now = new Date();
+    if (selectedDate > now) {
+        alert("You cannot enter progress for a future date/time.");
+        return;
+    }
+
+    // High-Precision Timestamp Logic
+    let finalISOString = selectedDate.toISOString();
+
+    // If user selected "now" (roughly), capture exact seconds/ms for sorting
+    // Check if within the same minute
+    const isSameMinute = 
+        selectedDate.getFullYear() === now.getFullYear() &&
+        selectedDate.getMonth() === now.getMonth() &&
+        selectedDate.getDate() === now.getDate() &&
+        selectedDate.getHours() === now.getHours() &&
+        selectedDate.getMinutes() === now.getMinutes();
+
+    if (isSameMinute) {
+        finalISOString = now.toISOString();
+    }
+
     const entry: ProgressEntry = {
         entryId: entryId || crypto.randomUUID(),
         taskId: taskId,
-        dateAndTime: formData.dateAndTime,
+        dateAndTime: finalISOString,
         unitsAdded: unitsAdded,
         cumulativeUnits: 0 // Will be calculated by storage service
     };
@@ -156,11 +183,6 @@ const EntryForm: React.FC = () => {
                       </div>
                   )}
               </div>
-              <p className="text-sm text-gray-500 mt-2">
-                {mode === 'add' 
-                    ? "Enter the amount of work you finished recently." 
-                    : "Enter the new total amount completed so far."}
-              </p>
             </div>
 
             <div>
@@ -168,10 +190,12 @@ const EntryForm: React.FC = () => {
               <input
                 type="datetime-local"
                 required
+                max={maxDateStr}
                 value={formData.dateAndTime}
                 onChange={(e) => setFormData(prev => ({ ...prev, dateAndTime: e.target.value }))}
                 className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none"
               />
+              <p className="text-xs text-gray-400 mt-1">Cannot select future dates.</p>
             </div>
 
             <button

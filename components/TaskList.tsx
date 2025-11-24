@@ -46,28 +46,11 @@ const TaskList: React.FC = () => {
         return a.entryId.localeCompare(b.entryId);
     });
     
-    const createdTime = new Date(task.createdOn).getTime();
-    
-    const data = [{
-      date: createdTime,
-      val: task.startUnits
-    }];
-
-    sorted.forEach(e => {
-      data.push({
-        date: new Date(e.dateAndTime).getTime(),
-        val: e.cumulativeUnits
-      });
-    });
-
-    // Add "Current Date" point
-    const now = new Date().getTime();
-    const lastVal = data[data.length - 1].val;
-    
-    data.push({
-        date: now,
-        val: lastVal
-    });
+    // Only use actual entries
+    const data = sorted.map(e => ({
+      date: new Date(e.dateAndTime).getTime(),
+      val: e.cumulativeUnits
+    }));
 
     return data;
   };
@@ -159,7 +142,7 @@ const TaskList: React.FC = () => {
                             />
                             <YAxis domain={[0, 'auto']} hide />
                             <Area 
-                                type="stepAfter" 
+                                type="monotone" 
                                 dataKey="val" 
                                 stroke="#3b82f6" 
                                 strokeWidth={2}
