@@ -1,0 +1,5 @@
+{
+  "name": "ProgressTracker",
+  "description": "A simple offline-first application to track cumulative progress of tasks and projects.",
+  "requestFramePermissions": []
+}
